@@ -407,68 +407,16 @@
 
       
         
-          
-            <blockquote>
+          <blockquote>
 <p> 先去/var/log/目录下查看对应的日志文件，再来排查错误</p>
 </blockquote>
-<h2 id="1-实例处于错误状态"><a href="#1-实例处于错误状态" class="headerlink" title="1.实例处于错误状态"></a>1.实例处于错误状态</h2><p><img src="1556263767222.png" alt="1556263767222"></p>
-<p><strong>解决办法：</strong></p>
-<p>1.使用<code>openstack hypervisor list</code>查看</p>
-<p><img src="1556263862029.png" alt="1556263862029"></p>
-<p>2.然后<code>openstack hypervisor show</code>挨个show一下，看看vcpus，local_gb，memory_mb</p>
-<p><img src="1556264047817.png" alt="1556264047817"></p>
-<p><img src="1556264004581.png" alt="556264004581"></p>
-<p><img src="1556264031226.png" alt="1556264031226"></p>
-<p>local_gb只剩9g可用，磁盘空间不够，需要对/root分区扩容</p>
-<p><img src="1556264173404.png" alt="1556264173404"></p>
-<p>或者使用卷来创建实例，创建的时候记得选择实例类型中根磁盘为0的来创建，否则会占用local_gb的空间，会导致后面无法创建虚拟机。</p>
-<blockquote>
-<p>根磁盘是为镜像和快照设置的大小，只有用卷创建的时候可以设置根磁盘大小为0。</p>
-</blockquote>
-<h2 id="2-Exceeded-maximum-number-of-retries（超过最大重试次数）"><a href="#2-Exceeded-maximum-number-of-retries（超过最大重试次数）" class="headerlink" title="2. Exceeded maximum number of retries（超过最大重试次数）"></a>2. Exceeded maximum number of retries（超过最大重试次数）</h2><p>Exceeded maximum number of retries. Exhausted all hosts available for retrying build failures for instance e5b8c859-bbdd-49ee-9e8e-14ca63ecb67d.].</p>
-<h2 id="3-openstack虚拟机运行慢"><a href="#3-openstack虚拟机运行慢" class="headerlink" title="3. openstack虚拟机运行慢"></a>3. openstack虚拟机运行慢</h2><ol>
-<li>执行以下命令查看计算节点是否支持虚拟机的硬件加速：</li>
-</ol>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">egrep -c &apos;(vmx|svm)&apos; /proc/cpuinfo</span><br></pre></td></tr></table></figure>
-
-<ol start="2">
-<li><p>如果此命令返回值，则计算节点支持硬件加速，通常不需要其他配置。</p>
-<p>如果此命令返回值<code>zero</code>，则您的计算节点不支持硬件加速，您必须配置<code>libvirt</code>为使用QEMU而不是KVM。</p>
-</li>
-</ol>
-<ul>
-<li><p>编辑文件中的<code>[libvirt]</code>部分，<code>/etc/nova/nova.conf</code>如下所示：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">[libvirt]</span><br><span class="line"># ...</span><br><span class="line">virt_type = qemu</span><br></pre></td></tr></table></figure>
-
-</li>
-</ul>
-<h2 id="4-RuntimeError-Unable-to-create-a-new-session-key-It-is-likely-that-the-cache-is-unavailable"><a href="#4-RuntimeError-Unable-to-create-a-new-session-key-It-is-likely-that-the-cache-is-unavailable" class="headerlink" title="4. RuntimeError: Unable to create a new session key. It is likely that the cache is unavailable."></a>4. RuntimeError: Unable to create a new session key. It is likely that the cache is unavailable.</h2><p>说明缓存配置存在问题，解决办法如下：</p>
-<p>将 <strong>/etc/openstack-dashboard/local_settings</strong> 里的</p>
-<p><strong>SESSION_ENGINE = ‘django.contrib.sessions.backends.cache’</strong>（文档里说是如此配置，然而并不好使）</p>
-<p>改成</p>
-<p><strong>SESSION_ENGINE = ‘django.contrib.sessions.backends.file’</strong></p>
-<p>重启httpd和memcached，我用的CentOS7所以命令是</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">systemctl restart httpd.service memcached.service</span><br></pre></td></tr></table></figure>
-
-<p>刷新页面重新登录，成功进入Dashboard。</p>
-<h2 id="5-Volume-driver-LVMVolumeDriver-not-initialized"><a href="#5-Volume-driver-LVMVolumeDriver-not-initialized" class="headerlink" title="5. Volume driver LVMVolumeDriver not initialized"></a>5. Volume driver LVMVolumeDriver not initialized</h2><p><img src="1567511904396.png" alt="1567511904396"></p>
-<p>这个其实是第一个红框中的错误引发的，意思就是说执行lvcreate命令的时候报错，而lvcreate是用来创建lv（逻辑卷）的，而报错是因为vg中剩余的空间为0，也就是下图的VFree（本来是0,这个是我增加完剩余空间之后的截图，之前忘截图了）。</p>
-<p><img src="1567511978337.png" alt="1567511978337"></p>
-<p>知道了报错的原因，解决办法就是要增加VFree的大小，这里看需要给cinder分配多大的存储空间，我划分了1T过去，然后重启一下cinder相关的服务：<code>systemctl restart openstack-cinder-volume.service target.service</code>。cinder使用的空间如下所述，所以上面那张图中VFree的值是52.2g。</p>
-<p><img src="1567512468075.png" alt="1567512468075"></p>
-<blockquote>
-<p>cinder涉及的linux知识主要是lvm（逻辑卷管理），所以先去搞清楚pv，vg，lv，pe这些概念，然后知道怎么在linux中创建和管理LVM卷。</p>
-</blockquote>
-<h2 id="6-openstack-cinder-volume-service启动失败"><a href="#6-openstack-cinder-volume-service启动失败" class="headerlink" title="6. openstack-cinder-volume.service启动失败"></a>6. openstack-cinder-volume.service启动失败</h2><p>执行<code>journalctl -xe</code>可以详细地查看服务的启动过程</p>
-<p><img src="1567513388161.png" alt="1567513388161"></p>
-<p>在<code>/etc/cinder/cinder.conf</code>中出现了不期待的连续行，打开文件检查一下，发现每行都多了一个缩进。。。去掉缩进，重启服务，成功启动。</p>
-<h2 id="7-vnc-console-failed-to-connect-to-server-code-1006"><a href="#7-vnc-console-failed-to-connect-to-server-code-1006" class="headerlink" title="7. vnc console : failed to connect to server (code: 1006)"></a>7. vnc console : failed to connect to server (code: 1006)</h2><p><img src="92767084-af7e-11e6-807e-a7fd1ba14b59.png" alt="selection_545"></p>
-<p><strong>解决办法：</strong></p>
-<p>先去查看日志，<code>tail -f /var/log/nova/nova-novncproxy.log</code>，结果发现vnc发送请求报文里面host的ip和实际计算节点的ip不一致，这是由于计算节点ip发生了改变导致的，而我没有在计算节点重启nova服务，导致其还是以原来的ip发送请求，从而发生了错误。</p>
-<p><img src="1567495871070.png" alt="1567495871070"></p>
-<p>所以，只需要在ip发生改变的计算节点重启下nova服务就行了，执行命令<code>systemctl restart libvirtd.service openstack-nova-compute.service</code></p>
-
-          
+          <!--noindex-->
+          <div class="post-button text-center">
+            <a class="btn" href="/2019/09/18/openstack问题记录/#more" rel="contents">
+              阅读全文 &raquo;
+            </a>
+          </div>
+          <!--/noindex-->
         
       
     </div>
@@ -618,22 +566,14 @@
 
       
         
-          
-            <p>Welcome to <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/" target="_blank" rel="noopener">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html" target="_blank" rel="noopener">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues" target="_blank" rel="noopener">GitHub</a>.</p>
-<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">"My New Post"</span></span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/writing.html" target="_blank" rel="noopener">Writing</a></p>
-<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/server.html" target="_blank" rel="noopener">Server</a></p>
-<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a href="https://hexo.io/docs/generating.html" target="_blank" rel="noopener">Generating</a></p>
-<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
-
-<p>More info: [Deployment](</p>
-
-          
+          <p>Welcome to <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/" target="_blank" rel="noopener">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html" target="_blank" rel="noopener">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+          <!--noindex-->
+          <div class="post-button text-center">
+            <a class="btn" href="/2019/09/04/hexo基本操作/#more" rel="contents">
+              阅读全文 &raquo;
+            </a>
+          </div>
+          <!--/noindex-->
         
       
     </div>
