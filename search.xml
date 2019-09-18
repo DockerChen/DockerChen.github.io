@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <search>
   <entry>
+    <title><![CDATA[openstack问题记录]]></title>
+    <url>%2F2019%2F09%2F18%2Fopenstack%E9%97%AE%E9%A2%98%E8%AE%B0%E5%BD%95%2F</url>
+    <content type="text"><![CDATA[先去/var/log/目录下查看对应的日志文件，再来排查错误 1.实例处于错误状态 解决办法： 1.使用openstack hypervisor list查看 2.然后openstack hypervisor show挨个show一下，看看vcpus，local_gb，memory_mb local_gb只剩9g可用，磁盘空间不够，需要对/root分区扩容 或者使用卷来创建实例，创建的时候记得选择实例类型中根磁盘为0的来创建，否则会占用local_gb的空间，会导致后面无法创建虚拟机。 根磁盘是为镜像和快照设置的大小，只有用卷创建的时候可以设置根磁盘大小为0。 2. Exceeded maximum number of retries（超过最大重试次数）Exceeded maximum number of retries. Exhausted all hosts available for retrying build failures for instance e5b8c859-bbdd-49ee-9e8e-14ca63ecb67d.]. 3. openstack虚拟机运行慢 执行以下命令查看计算节点是否支持虚拟机的硬件加速： 1egrep -c &apos;(vmx|svm)&apos; /proc/cpuinfo 如果此命令返回值，则计算节点支持硬件加速，通常不需要其他配置。 如果此命令返回值zero，则您的计算节点不支持硬件加速，您必须配置libvirt为使用QEMU而不是KVM。 编辑文件中的[libvirt]部分，/etc/nova/nova.conf如下所示： 123[libvirt]# ...virt_type = qemu 4. RuntimeError: Unable to create a new session key. It is likely that the cache is unavailable.说明缓存配置存在问题，解决办法如下： 将 /etc/openstack-dashboard/local_settings 里的 SESSION_ENGINE = ‘django.contrib.sessions.backends.cache’（文档里说是如此配置，然而并不好使） 改成 SESSION_ENGINE = ‘django.contrib.sessions.backends.file’ 重启httpd和memcached，我用的CentOS7所以命令是 1systemctl restart httpd.service memcached.service 刷新页面重新登录，成功进入Dashboard。 5. Volume driver LVMVolumeDriver not initialized 这个其实是第一个红框中的错误引发的，意思就是说执行lvcreate命令的时候报错，而lvcreate是用来创建lv（逻辑卷）的，而报错是因为vg中剩余的空间为0，也就是下图的VFree（本来是0,这个是我增加完剩余空间之后的截图，之前忘截图了）。 知道了报错的原因，解决办法就是要增加VFree的大小，这里看需要给cinder分配多大的存储空间，我划分了1T过去，然后重启一下cinder相关的服务：systemctl restart openstack-cinder-volume.service target.service。cinder使用的空间如下所述，所以上面那张图中VFree的值是52.2g。 cinder涉及的linux知识主要是lvm（逻辑卷管理），所以先去搞清楚pv，vg，lv，pe这些概念，然后知道怎么在linux中创建和管理LVM卷。 6. openstack-cinder-volume.service启动失败执行journalctl -xe可以详细地查看服务的启动过程 在/etc/cinder/cinder.conf中出现了不期待的连续行，打开文件检查一下，发现每行都多了一个缩进。。。去掉缩进，重启服务，成功启动。 7. vnc console : failed to connect to server (code: 1006) 解决办法： 先去查看日志，tail -f /var/log/nova/nova-novncproxy.log，结果发现vnc发送请求报文里面host的ip和实际计算节点的ip不一致，这是由于计算节点ip发生了改变导致的，而我没有在计算节点重启nova服务，导致其还是以原来的ip发送请求，从而发生了错误。 所以，只需要在ip发生改变的计算节点重启下nova服务就行了，执行命令systemctl restart libvirtd.service openstack-nova-compute.service]]></content>
+      <categories>
+        <category>技术研究</category>
+      </categories>
+      <tags>
+        <tag>openstack</tag>
+      </tags>
+  </entry>
+  <entry>
     <title><![CDATA[hexo基本操作]]></title>
     <url>%2F2019%2F09%2F04%2Fhexo%E5%9F%BA%E6%9C%AC%E6%93%8D%E4%BD%9C%2F</url>
     <content type="text"><![CDATA[Welcome to Hexo! This is your very first post. Check documentation for more info. If you get any problems when using Hexo, you can find the answer in troubleshooting or you can ask me on GitHub. Quick StartCreate a new post1$ hexo new "My New Post" More info: Writing Run server1$ hexo server More info: Server Generate static files1$ hexo generate More info: Generating Deploy to remote sites1$ hexo deploy More info: [Deployment](]]></content>
